@@ -3,9 +3,26 @@
 
 import ephem
 import datetime
+import json
 from dateutil.tz import UTC
  
 Sun = ephem.Sun()
+
+lat = 48.87
+lng = 2.67
+
+def lambda_handler(event, context):
+
+    mylat = ':'.join(str(a) for a in dd_to_dms(float(lat)))
+    mylng = ':'.join(str(a) for a in dd_to_dms(float(lng)))
+    dt = datetime.datetime.now()
+    next_shabbat = get_next_shabbat(dt)
+    entry, out = get_sunset_sunrise(next_shabbat, mylat, mylng)
+    res = {
+        "light_candles": candle_lighting_time(ephem.localtime(entry)).isoformat(),
+        "do_havdalah": havdala_time(ephem.localtime(out)).isoformat(),
+    }
+    return json.dumps(res)
 
 
 def get_next_shabbat(dt):
@@ -18,6 +35,7 @@ def get_next_shabbat(dt):
     else:
         delta = sat - cur
     return dt + datetime.timedelta(days=delta)
+
 
 def get_sunset_sunrise(date, lat, lng):
     moshe = ephem.Observer()

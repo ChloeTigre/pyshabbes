@@ -12,7 +12,7 @@ def get_first_friday(t:datetime.date=None):
     return t
 
 
-class City(ephemerides.ComputeRequest):
+class City(object):
     @property
     def city_name(self):
         return self._city

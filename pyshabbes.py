@@ -1,80 +1,78 @@
 #!/usr/bin/env python
 
-
-import ephem
+import ephemerides
 import datetime
-import json
-from dateutil.tz import UTC
- 
-Sun = ephem.Sun()
+import pytz
 
-lat = 48.87
-lng = 2.67
-
-def lambda_handler(event, context):
-
-    mylat = ':'.join(str(a) for a in dd_to_dms(float(lat)))
-    mylng = ':'.join(str(a) for a in dd_to_dms(float(lng)))
-    dt = datetime.datetime.now()
-    next_shabbat = get_next_shabbat(dt)
-    entry, out = get_sunset_sunrise(next_shabbat, mylat, mylng)
-    res = {
-        "light_candles": candle_lighting_time(ephem.localtime(entry)).isoformat(),
-        "do_havdalah": havdala_time(ephem.localtime(out)).isoformat(),
-    }
-    return json.dumps(res)
+def get_first_friday(t:datetime.date=None):
+    if t is None:
+        t = datetime.date.today()
+    while t.weekday() != 4:
+        t += datetime.timedelta(1)
+    return t
 
 
-def get_next_shabbat(dt):
-    cur = dt.weekday()
-    sat = 5
-    if cur == 6:
-        delta = 6
-    elif cur == sat:
-        delta = 7
-    else:
-        delta = sat - cur
-    return dt + datetime.timedelta(days=delta)
+class City(ephemerides.ComputeRequest):
+    @property
+    def city_name(self):
+        return self._city
 
+    @property
+    def timezone(self):
+        return self._timezone
+    @property
+    def city_coordinates(self):
+        return self._city_coordinates
 
-def get_sunset_sunrise(date, lat, lng):
-    moshe = ephem.Observer()
-    moshe.date = str(date)
-    moshe.lat = lat
-    moshe.lon = lng
-    moshe.elevation = 0
-    return moshe.previous_setting(Sun), moshe.next_setting(Sun)
- 
+    @property
+    def latitude(self):
+        return self._city_coordinates[0]
 
-def candle_lighting_time(sunset):
-    return sunset - datetime.timedelta(minutes=18)
-
-
-def havdala_time(sunset):
-    return sunset + datetime.timedelta(minutes=50)
-
-
-def dd_to_dms(dd):
-   is_positive = dd >= 0
-   dd = abs(dd)
-   minutes,seconds = divmod(dd*3600,60)
-   degrees,minutes = divmod(minutes,60)
-   degrees = degrees if is_positive else -degrees
-   return (degrees,minutes,seconds)
-
+    @property
+    def longitude(self):
+        return self._city_coordinates[1]
     
+    def __init__(self, city, latitude, longitude, timezone):
+        self._city = city
+        self._timezone = timezone
+        self._city_coordinates = (ephemerides.Degree(latitude), ephemerides.Degree(longitude)) 
 
-if __name__ == '__main__':
-    import sys
-    yyyy, mm, dd =  (int(a) for a in sys.argv[1:4])
-    lat, lng = (a for a in sys.argv[4:6])
-    if ':' not in lat:
-        lat = ':'.join(str(a) for a in dd_to_dms(float(lat)))
-        lng = ':'.join(str(a) for a in dd_to_dms(float(lng)))
 
-    dt = datetime.datetime(yyyy, mm, dd, 12)
-    next_shabbat = get_next_shabbat(dt)
-    entry, out = get_sunset_sunrise(next_shabbat, lat, lng)
-    print(ephem.localtime(out))
-    print("Light Shabbat lights at", candle_lighting_time(ephem.localtime(entry)))
-    print("Perform Havdalah at", havdala_time(ephem.localtime(out)))
+class NextShabbosTime(object):
+    @property
+    def shabbos_entry(self):
+        return (self._shabbos_entry_date + datetime.timedelta(minutes=self._entry_sunset.time - 18)).astimezone(self._city.timezone)
+
+    @property
+    def shabbos_exit(self):
+        return (self._shabbos_exit_date + datetime.timedelta(minutes=self._exit_sunset.time + 50)).astimezone(self._city.timezone)
+
+    def __str__(self):
+        return "For {city}, upcoming shabbat candle lighting time is {entry} and havdalah time is {exit}".format(
+            city=self._city.city_name,
+            entry=self.shabbos_entry.strftime('%H:%M'), 
+            exit=self.shabbos_exit.strftime("%H:%M"))
+
+    def __init__(self, city: City, start_date: datetime.date = datetime.date.today()):
+        self._city = city
+        shabbos_entry_date = get_first_friday(start_date)
+        self._shabbos_entry_date = datetime.datetime(shabbos_entry_date.year, shabbos_entry_date.month, shabbos_entry_date.day, 0, 0, 0, 0, pytz.UTC)
+        self._shabbos_exit_date = self._shabbos_entry_date + datetime.timedelta(1)
+        _, self._entry_sunset = ephemerides.ComputeRequest(city.city_name, city.latitude, city.longitude, self._shabbos_entry_date).compute()
+        _, self._exit_sunset = ephemerides.ComputeRequest(city.city_name, city.latitude, city.longitude, 
+        self._shabbos_exit_date).compute()
+
+
+
+print(datetime.datetime.now())
+for i in range(10000):
+    Paris = City("Paris", 48.866667, -2.333333, pytz.timezone('Europe/Paris'))
+    NewYork = City("New-York", 40.7142700, 74.0059700, pytz.timezone('America/New_York'))
+    nst = NextShabbosTime(Paris)
+    nst2 = NextShabbosTime(NewYork)
+
+    r = str(nst)
+    r2 = str(nst2)
+print(datetime.datetime.now())
+print(r)
+print(r2)
